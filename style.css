@@ -101,7 +101,18 @@ main { flex: 1; display: grid; place-items: center; padding: 44px 20px 70px; pos
 footer { text-align: center; padding: 0 15px 22px; position: relative; z-index: 2; }
 footer span { color: var(--pink); padding: 0 3px; }
 .floating-hearts { position: fixed; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; }
-.float-heart { position: absolute; bottom: -30px; color: rgba(255,139,191,.2); animation: floatUp linear infinite; }
+ .float-heart { position: absolute; bottom: -30px; color: rgba(255,139,191,.2); animation: floatUp linear infinite; }
+.float-dot {
+  position: absolute; width: 3px; height: 3px; border-radius: 50%;
+  background: rgba(255, 190, 222, .72);
+  box-shadow: 0 0 9px 2px rgba(255, 119, 183, .34);
+  animation: driftAround ease-in-out infinite alternate;
+}
+@keyframes driftAround {
+  0% { transform: translate3d(0, 0, 0); opacity: .15; }
+  50% { opacity: .8; }
+  100% { transform: translate3d(var(--drift-x), var(--drift-y), 0); opacity: .25; }
+}
 @keyframes floatUp { to { transform: translateY(-115vh) rotate(35deg); opacity: 0; } }
 @keyframes reveal { to { opacity: 1; transform: translateY(0); } }
 @keyframes messagePulse { 50% { opacity: .78; text-shadow: 0 0 18px #ff4eaa, 0 0 40px #f02b91; } }

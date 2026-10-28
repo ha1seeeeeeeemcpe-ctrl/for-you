@@ -26,6 +26,19 @@ for (let i = 0; i < 24; i++) {
   floatingLayer.appendChild(heart);
 }
 
+// Small, slow-moving light particles across the whole page.
+for (let i = 0; i < 38; i++) {
+  const dot = document.createElement("span");
+  dot.className = "float-dot";
+  dot.style.left = `${Math.random() * 100}%`;
+  dot.style.top = `${Math.random() * 100}%`;
+  dot.style.setProperty("--drift-x", `${-35 + Math.random() * 70}px`);
+  dot.style.setProperty("--drift-y", `${-45 + Math.random() * 90}px`);
+  dot.style.animationDuration = `${14 + Math.random() * 20}s`;
+  dot.style.animationDelay = `${-Math.random() * 25}s`;
+  floatingLayer.appendChild(dot);
+}
+
 // ===== CODE CHECK =====
 function unlock() {
   const entered = codeInput.value.trim();
@@ -99,13 +112,8 @@ function createHeartParticles() {
     particles.push(makeParticle(centerX + p.x, centerY + p.y, true));
   }
 
-  // A soft dust cloud inside the heart.
-  for (let i = 0; i < 420; i++) {
-    const t = Math.random() * Math.PI * 2;
-    const r = Math.sqrt(Math.random()) * .88;
-    const p = heartPoint(t, scale * r);
-    particles.push(makeParticle(centerX + p.x, centerY + p.y, false));
-  }
+  // Only the heart outline is filled with particles.
+  // This keeps the inside of the heart clean and uncluttered.
 }
 
 function makeParticle(x, y, outline) {
