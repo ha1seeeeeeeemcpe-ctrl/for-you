@@ -1,19 +1,20 @@
-// ===== SETTINGS =====
-const SECRET_CODE = "129";
 
-// ===== ELEMENTS =====
+const SECRET_CODE = "129";
 const lockScreen = document.getElementById("lockScreen");
+const lockCard = document.getElementById("lockCard");
 const surpriseScreen = document.getElementById("surpriseScreen");
-const codeInput = document.getElementById("codeInput");
 const statusText = document.getElementById("status");
 const unlockButton = document.getElementById("unlockButton");
 const replayButton = document.getElementById("replayButton");
-const musicButton = document.getElementById("musicButton");
-const musicLabel = document.getElementById("musicLabel");
+const codeDisplay = document.getElementById("codeDisplay");
+const digitControls = document.getElementById("codeDisplay");
 const canvas = document.getElementById("heartCanvas");
-const ctx = canvas.getContext("2d");
+const ctx = canvas ? canvas.getContext("2d") : null;
+let digits = [0, 0, 0], isUnlocking = false, particles = [], animationId;
+let canvasWidth = 0, canvasHeight = 0;
+const colors = ["#ff5ca8", "#ff9bc7", "#ffd1e4", "#c78aff", "#fff0f7"];
 
-// ===== FLOATING BACKGROUND HEARTS =====
+// Floating background decorations
 const floatingLayer = document.querySelector(".floating-hearts");
 for (let i = 0; i < 24; i++) {
   const heart = document.createElement("span");
@@ -25,8 +26,6 @@ for (let i = 0; i < 24; i++) {
   heart.style.animationDelay = `${-Math.random() * 25}s`;
   floatingLayer.appendChild(heart);
 }
-
-// Small, slow-moving light particles across the whole page.
 for (let i = 0; i < 38; i++) {
   const dot = document.createElement("span");
   dot.className = "float-dot";
@@ -39,174 +38,240 @@ for (let i = 0; i < 38; i++) {
   floatingLayer.appendChild(dot);
 }
 
-// ===== CODE CHECK =====
+// Three independent digit wheels. Values wrap around: 0 - 1 becomes 9,
+// and 9 + 1 becomes 0.
+function renderCode() {
+  digitControls.querySelectorAll(".code-digit").forEach((slot, index) => {
+    slot.textContent = String(digits[index]);
+  });
+}
+function changeDigit(index, step) {
+  if (isUnlocking) return;
+  digits[index] = (digits[index] + step + 10) % 10;
+  renderCode();
+  statusText.textContent = "A little surprise is waiting...";
+  statusText.classList.remove("error");
+}
+digitControls.addEventListener("click", event => {
+  const button = event.target.closest("button[data-index][data-step]");
+  if (!button) return;
+  changeDigit(Number(button.dataset.index), Number(button.dataset.step));
+});
+
+// Keyboard support: left/right selects a digit, up/down changes it.
+let selectedDigit = 0;
+document.addEventListener("keydown", event => {
+  if (isUnlocking || lockScreen.style.display === "none") return;
+  if (event.key === "ArrowLeft") { selectedDigit = Math.max(0, selectedDigit - 1); event.preventDefault(); }
+  else if (event.key === "ArrowRight") { selectedDigit = Math.min(2, selectedDigit + 1); event.preventDefault(); }
+  else if (event.key === "ArrowUp") { changeDigit(selectedDigit, 1); event.preventDefault(); }
+  else if (event.key === "ArrowDown") { changeDigit(selectedDigit, -1); event.preventDefault(); }
+  else if (event.key === "Enter") unlock();
+});
+
+// Unlock animation
 function unlock() {
-  const entered = codeInput.value.trim();
-  if (entered !== SECRET_CODE) {
-    statusText.textContent = "That's not the right code. Try again.";
+  if (isUnlocking) return;
+  const enteredCode = digits.join("");
+  if (enteredCode !== SECRET_CODE) {
+    statusText.textContent = "Not quite! Try another code.";
     statusText.classList.add("error");
-    codeInput.value = "";
-    codeInput.focus();
+    lockCard.classList.remove("wrong");
+    void lockCard.offsetWidth;
+    lockCard.classList.add("wrong");
     return;
   }
-
-  statusText.textContent = "Unlocked with love!";
-  statusText.classList.remove("error");
-  lockScreen.classList.add("hide");
+  isUnlocking = true;
+  statusText.textContent = "The lock is opening...";
+  unlockButton.disabled = true;
+  digitControls.querySelectorAll("button").forEach(button => button.disabled = true);
+  lockCard.classList.add("unlocking");
   setTimeout(() => {
-    lockScreen.style.display = "none";
-    surpriseScreen.classList.add("visible");
-    surpriseScreen.setAttribute("aria-hidden", "false");
-    resizeCanvas();
-    createHeartParticles();
-    animateParticles();
-    startMusic(); // Starts only after the visitor interacts with the page.
-  }, 550);
+    lockScreen.classList.add("hide");
+    setTimeout(() => {
+      lockScreen.style.display = "none";
+      surpriseScreen.classList.add("visible");
+      surpriseScreen.setAttribute("aria-hidden", "false");
+      document.body.classList.add("particles-active");
+      resizeCanvas();
+      createSceneParticles();
+      animateParticles();
+    }, 480);
+  }, 760);
 }
 unlockButton.addEventListener("click", unlock);
-codeInput.addEventListener("keydown", event => {
-  if (event.key === "Enter") unlock();
-});
-codeInput.addEventListener("input", () => {
-  codeInput.value = codeInput.value.replace(/[^0-9]/g, "").slice(0, 3);
-  statusText.textContent = "Enter the secret code";
-  statusText.classList.remove("error");
-});
 
-// ===== PARTICLE HEART =====
-let particles = [];
-let animationId;
-let canvasWidth = 0;
-let canvasHeight = 0;
-
+// Full-screen particle scene.
+// The lock screen above this section is intentionally left unchanged.
 function resizeCanvas() {
-  const rect = canvas.getBoundingClientRect();
+  if (!canvas || !ctx) return;
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  canvasWidth = rect.width;
-  canvasHeight = rect.height;
-  canvas.width = Math.round(rect.width * dpr);
-  canvas.height = Math.round(rect.height * dpr);
+  canvasWidth = window.innerWidth;
+  canvasHeight = window.innerHeight;
+  canvas.width = Math.round(canvasWidth * dpr);
+  canvas.height = Math.round(canvasHeight * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  if (surpriseScreen.classList.contains("visible")) createHeartParticles();
+
+  if (surpriseScreen.classList.contains("visible")) {
+    createSceneParticles();
+    animateParticles();
+  }
 }
 
 function heartPoint(t, scale) {
-  // Parametric heart curve.
   const x = 16 * Math.pow(Math.sin(t), 3);
-  const y = -(13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t));
+  const y = -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t));
   return { x: x * scale, y: y * scale };
 }
 
-function createHeartParticles() {
-  if (!canvasWidth || !canvasHeight) return;
-  const scale = Math.min(canvasWidth / 39, canvasHeight / 34) * .88;
-  const centerX = canvasWidth / 2;
-  const centerY = canvasHeight * .49;
-  particles = [];
-
-  // Points around the heart outline.
-  const outlineCount = 850;
-  for (let i = 0; i < outlineCount; i++) {
-    const t = (i / outlineCount) * Math.PI * 2;
-    const p = heartPoint(t, scale);
-    particles.push(makeParticle(centerX + p.x, centerY + p.y, true));
-  }
-
-  // Only the heart outline is filled with particles.
-  // This keeps the inside of the heart clean and uncluttered.
-}
-
-function makeParticle(x, y, outline) {
-  const colors = ["#ff5ca8", "#ff9bc7", "#ffd1e4", "#c78aff", "#fff0f7"];
+function makeParticle(x, y, size = 1.5, target = null) {
   return {
-    x: Math.random() * canvasWidth, y: Math.random() * canvasHeight,
-    tx: x, ty: y, size: outline ? 1 + Math.random() * 1.8 : .7 + Math.random() * 1.4,
+    x,
+    y,
+    startX: x,
+    startY: y,
+    targetX: target ? target.x : x,
+    targetY: target ? target.y : y,
+    size: size * (0.75 + Math.random() * 0.65),
     color: colors[Math.floor(Math.random() * colors.length)],
-    alpha: .55 + Math.random() * .45,
-    speed: .025 + Math.random() * .055
+    alpha: target ? 0 : Math.random() * 0.28,
+    targetAlpha: target ? 0.82 + Math.random() * 0.18 : 0.18 + Math.random() * 0.3,
+    phase: Math.random() * Math.PI * 2,
+    drift: 0.4 + Math.random() * 1.1,
+    delay: target ? Math.random() * 420 : 0,
+    isShape: Boolean(target)
   };
 }
 
+function getTextPoints(text, cx, cy, maxWidth, fontSize) {
+  const sample = document.createElement("canvas");
+  const sctx = sample.getContext("2d");
+  sample.width = Math.max(1, Math.ceil(maxWidth));
+  sample.height = Math.max(1, Math.ceil(fontSize * 1.8));
+
+  sctx.fillStyle = "#fff";
+  sctx.textAlign = "center";
+  sctx.textBaseline = "middle";
+  sctx.font = `700 ${fontSize}px Georgia, serif`;
+  sctx.fillText(text, sample.width / 2, sample.height / 2, maxWidth * 0.96);
+
+  const pixels = sctx.getImageData(0, 0, sample.width, sample.height).data;
+  const points = [];
+  const step = Math.max(3, Math.round(fontSize / 10));
+
+  for (let y = 0; y < sample.height; y += step) {
+    for (let x = 0; x < sample.width; x += step) {
+      if (pixels[(y * sample.width + x) * 4 + 3] > 100) {
+        points.push({
+          x: cx + x - sample.width / 2,
+          y: cy + y - sample.height / 2
+        });
+      }
+    }
+  }
+  return points;
+}
+
+function createSceneParticles() {
+  if (!canvasWidth || !canvasHeight || !ctx) return;
+  particles = [];
+
+  // Measure the reserved area between the heading and the subtitle.
+  // The lock screen and its markup/styles are not changed.
+  const stage = document.querySelector(".heart-stage");
+  const rect = stage ? stage.getBoundingClientRect() : {
+    left: 0, top: 0, width: canvasWidth, height: canvasHeight * 0.58
+  };
+
+  const stageWidth = Math.max(220, rect.width || canvasWidth * 0.8);
+  const stageHeight = Math.max(260, rect.height || canvasHeight * 0.55);
+  const cx = rect.left + stageWidth / 2;
+  const cy = rect.top + stageHeight / 2;
+  const scale = Math.min(stageWidth / 37, stageHeight / 36, 12.5);
+
+  // Every heart/text particle starts at a random point across the full viewport.
+  // Their destinations are the sampled heart outline and the particle lettering.
+  const heartCount = Math.min(760, Math.max(430, Math.round(stageWidth * 1.15)));
+  for (let i = 0; i < heartCount; i++) {
+    const point = heartPoint((i / heartCount) * Math.PI * 2, scale);
+    const originX = Math.random() * canvasWidth;
+    const originY = Math.random() * canvasHeight;
+    particles.push(makeParticle(originX, originY, 1.45, {
+      x: cx + point.x,
+      y: cy + point.y
+    }));
+  }
+
+  const fontSize = Math.min(37, Math.max(20, stageWidth * 0.072));
+  const textPoints = getTextPoints(
+    "I LOVE YOU",
+    cx,
+    cy + stageHeight * 0.015,
+    Math.min(stageWidth * 0.76, 430),
+    fontSize
+  );
+
+  for (const point of textPoints) {
+    const originX = Math.random() * canvasWidth;
+    const originY = Math.random() * canvasHeight;
+    particles.push(makeParticle(originX, originY, 1.55, point));
+  }
+
+  // A smaller layer of soft ambient sparkles remains around the formed shape.
+  const ambientCount = Math.min(170, Math.round(canvasWidth * canvasHeight / 5200));
+  for (let i = 0; i < ambientCount; i++) {
+    particles.push(makeParticle(
+      Math.random() * canvasWidth,
+      Math.random() * canvasHeight,
+      0.8 + Math.random() * 0.8
+    ));
+  }
+}
+
 function animateParticles() {
+  if (!ctx) return;
   cancelAnimationFrame(animationId);
-  function frame() {
+  const startTime = performance.now();
+  const gatherDuration = 2450;
+
+  function frame(now) {
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+
     for (const p of particles) {
-      p.x += (p.tx - p.x) * p.speed;
-      p.y += (p.ty - p.y) * p.speed;
-      ctx.globalAlpha = p.alpha;
+      if (p.isShape) {
+        const elapsed = Math.max(0, now - startTime - p.delay);
+        const progress = Math.min(1, elapsed / gatherDuration);
+        // Smooth ease-out: particles visibly travel in from across the screen.
+        const eased = 1 - Math.pow(1 - progress, 3);
+        p.x = p.startX + (p.targetX - p.startX) * eased;
+        p.y = p.startY + (p.targetY - p.startY) * eased;
+        p.alpha = Math.min(p.targetAlpha, progress * 1.45);
+      } else {
+        p.alpha += (p.targetAlpha - p.alpha) * 0.018;
+      }
+
+      const shimmer = 0.78 + Math.sin(now * 0.0012 * p.drift + p.phase) * 0.22;
+      ctx.globalAlpha = Math.max(0, p.alpha * shimmer);
       ctx.fillStyle = p.color;
-      ctx.shadowBlur = 8;
+      ctx.shadowBlur = p.isShape ? 8 : 5;
       ctx.shadowColor = p.color;
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
       ctx.fill();
     }
+
     ctx.globalAlpha = 1;
     ctx.shadowBlur = 0;
     animationId = requestAnimationFrame(frame);
   }
-  frame();
+
+  frame(startTime);
 }
-window.addEventListener("resize", resizeCanvas);
+
+// Replay starts a fresh gathering animation from new random positions.
 replayButton.addEventListener("click", () => {
-  createHeartParticles();
+  createSceneParticles();
   animateParticles();
 });
 
-// ===== ORIGINAL CALM SYNTH MELODY (NO AUDIO FILE NEEDED) =====
-let audioContext = null;
-let musicTimer = null;
-let musicOn = false;
-let noteIndex = 0;
-const melody = [261.63, 329.63, 392.00, 329.63, 293.66, 349.23, 440.00, 349.23];
-const bass = [130.81, 146.83, 110.00, 123.47];
-
-function playNote(frequency, duration, volume, wave = "sine") {
-  if (!audioContext || !musicOn) return;
-  const oscillator = audioContext.createOscillator();
-  const gain = audioContext.createGain();
-  oscillator.type = wave;
-  oscillator.frequency.value = frequency;
-  gain.gain.setValueAtTime(0, audioContext.currentTime);
-  gain.gain.linearRampToValueAtTime(volume, audioContext.currentTime + .12);
-  gain.gain.exponentialRampToValueAtTime(.001, audioContext.currentTime + duration);
-  oscillator.connect(gain);
-  gain.connect(audioContext.destination);
-  oscillator.start();
-  oscillator.stop(audioContext.currentTime + duration + .03);
-}
-
-function musicStep() {
-  const i = noteIndex % melody.length;
-  playNote(melody[i], 1.8, .045);
-  if (i % 2 === 0) playNote(bass[Math.floor(i / 2) % bass.length], 3.2, .025);
-  noteIndex++;
-}
-
-function startMusic() {
-  if (!audioContext) {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) return;
-    audioContext = new AudioCtx();
-  }
-  audioContext.resume();
-  musicOn = true;
-  musicButton.classList.add("playing");
-  musicLabel.textContent = "MUSIC ON";
-  clearInterval(musicTimer);
-  musicStep();
-  musicTimer = setInterval(musicStep, 850);
-}
-
-function stopMusic() {
-  musicOn = false;
-  clearInterval(musicTimer);
-  musicButton.classList.remove("playing");
-  musicLabel.textContent = "MUSIC OFF";
-}
-
-musicButton.addEventListener("click", () => {
-  if (musicOn) stopMusic();
-  else startMusic();
-});
+window.addEventListener("resize", resizeCanvas);
